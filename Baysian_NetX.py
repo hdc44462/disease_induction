@@ -1,3 +1,16 @@
+import json
+import itertools
+import numpy as np
+import math
+import pandas as pd
+
+
+def read_json(filename):
+    with open(filename, 'r') as file:
+        load_dict = json.load(file)
+        return load_dict
+
+
 class BayesN:
     disease_CNtoENname = read_json('disease_CNtoENname.json')
     cause_disease = read_json('cause_disease.json')
@@ -8,10 +21,15 @@ class BayesN:
     disease_type = read_json('disease_type.json')
 
     @staticmethod
-    def read_json(filename):
-        with open(filename, 'r') as file:
-            load_dict = json.load(file)
-            return load_dict
+    def reverse(dictionary):
+        reverse_dictionary = {}
+        for i in dictionary:
+            for j in dictionary[i]:
+                if j not in reverse_dictionary:
+                    reverse_dictionary[j] = {i: dictionary[i][j]}
+                else:
+                    reverse_dictionary[j][i] = dictionary[i][j]
+        return reverse_dictionary
 
     @staticmethod
     def create_cpd_upplim(disease_table, base):
@@ -19,7 +37,6 @@ class BayesN:
         for i in disease_table:
             if i not in res:
                 res[i] = []
-                print(i)
                 for j in itertools.product([1, 0], repeat=len(disease_table[i])):
                     temp = (np.array(list(disease_table[i].values())) * np.array(j)).max()
                     if temp == 0:
@@ -39,48 +56,75 @@ class BayesN:
                     res[i].append(base[i] / math.exp(-temp))
         return res
 
-    def __init__(self, main_symp, side_symp):
-        self.main_symp = main_symp
-        self.side_symp = side_symp
-        self.typelist = self.classif(main_symp)
-        self.model = self.create_BaysianN()
+    def __init__(self, main_symptom, side_symptom):
+        self.main_symptom = main_symptom
+        self.all_symptoms = main_symptom + side_symptom
+        self.type_list = self.classif()
 
     #         self.sample_recom = self.sample_recom()
     #         self.med_treat = self.treat_recom()
-
     def classif(self):
-        # get the typelist for main symptoms
-        classi = []
-        for i in symp:
-            for j in symptom_classification:
-                if i in symptom_classification[j] and j not in classi:
-                    classi.append(j)
+        type_list = []
+        for i in self.main_symp:
+            for j in self.symptom_classification:
+                if i in self.symptom_classification[j] and j not in type_list:
+                    type_list.append(j)
         res = []
-        for i in classi:
+        for i in type_list:
             temp = []
-            for j in disease_type:
-                if i in disease_type[j]:
+            for j in self.disease_type:
+                if i in self.disease_type[j]:
                     temp.append(j)
-            res.append(temp)
+            res[i] =temp
         return res
 
     @staticmethod
     def create_nodes(cause, symptom):
-        return cause
+        nodes = []
+        for i in cause:
+            for j in cause[i]:
+                nodes.append((j, i))
+        for i in symptom:
+            for j in symptom[j]:
+                nodes.append((i, j))
+        return BayesianModel(nodes)
 
-    @classmethod
-    def create_BaysianN(cls):
-        cls.sub_cause = [{key: value for key, value in cause_disease.items() if key in i} for i in cls.typelist]
-        cls.sub_symptom = [{key: value for key, value in disease_symptom.items() if key in i} for i in cls.typelist]
-        nodes = create_nodes(sub_cause, sub_symptom)
-        model = BayesianModel(nodes)
+    def add_probs(self):
+        cpd_symptom = create_cpd_upplim(reverse(cpd_symptom), base)
+        cpd_disease = create_cpd_risk(disease_table, base)
+        for i in cpd_symptom:
+            evi = list(self.symptom[self.symptom.symptom == i].disease)
+            self.model.add_cpds(
+                TabularCPD(variable=i, variable_card=2, values=[cpd_symptom[i], [1 - j for j in cpd_symptom[i]]],
+                           evidence=evi, evidence_card=[2] * len(evi)))
+
+        for i in cpd_disease:
+            evi = list(self.cause[self.cause.disease == i].cause)
+            #             print(i,evi)
+            self.model.add_cpds(
+                TabularCPD(variable=i, variable_card=2, values=[cpd_disease[i], [1 - j for j in cpd_disease[i]]],
+                           evidence=evi, evidence_card=[2] * len(evi)))
+        #         fillup all the cpds for cause_nodes(meaningless in calculation cuz those nodes are required information, no update needed)
+        for i in self.cause.cause.drop_duplicates():
+            print('staaaa')
+            if i != 'PRRS':
+                self.model.add_cpds(TabularCPD(variable=i, variable_card=2,
+                                               values=[
+                                                   [0],
+                                                   [1]
+                                               ]))
+
+    def create_BaysianN(self):
+        self.sub_cause = [{key: value for key, value in cause_disease.items() if key in i} for i in self.type_list]
+        self.sub_symptom = [{key: value for key, value in disease_symptom.items() if key in i} for i in self.type_list]
+        model = create_nodes(sub_cause, sub_symptom)
         self.add_cpds(model)
         return model
 
     def predict(self):
-        sub_cause = [{key: value for key, value in cause_disease.items() if key in i} for i in self.typelist]
-        sub_symptom = [{key: value for key, value in disease_symptom.items() if key in i} for i in self.typelist]
-        nodes = create_nodes(sub_cause, sub_symptom)
+        sub_cause = [{key: value for key, value in cause_disease.items() if key in i} for i in self.type_list]
+        sub_symptom = [{key: value for key, value in disease_symptom.items() if key in i} for i in self.type_list]
+        model = create_nodes(sub_cause, sub_symptom)
         self.add_cpds()
 
         cause_disease = []
