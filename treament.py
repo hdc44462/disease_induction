@@ -32,6 +32,17 @@ def treatment(segment, weight, amount, disease):
 
 
 if __name__ == '__main__':
+    if average_weight == 0:
+        if segmentID == 13905:
+            average_weight= 5
+        elif segmentID == 13906:
+            average_weight = 15
+        elif segmentID == 13907:
+            average_weight = 70
+        elif segmentID in (13908,13909,13910):
+            average_weight = 120
+    if total_amount == 0 :
+        total_amount = 10
     disease_treatment = pd.read_excel('treatment.xlsx')
     disease_control = read_json('disease_control.json')
     treat = treatment(segmentID, average_weight, total_amount, can_disease)

@@ -17,7 +17,7 @@ batchno = sys.argv[5]
 deathrate = int(sys.argv[6])
 
 histDB = {'host': '10.106.5.205', 'port': 3306, 'user': 'uszchenye', 'password': 'cy629!', 'database': 'MY_ANA_test'}
-batchno = '15380174'
+# batchno = '15380174'
 
 
 # connect to MYSQL
@@ -201,7 +201,6 @@ class BayesN:
         for i in sub_symptom:
             for j in sub_symptom[i]:
                 nodes.append((i, j))
-        self.nodes = nodes
         model = BayesianModel(nodes)
         cpd_symptom = self.create_cpd_upplim(self.reverse(sub_symptom), self.base_symptom)
         cpd_disease = self.create_cpd_risk(sub_cause, self.base_disease)
@@ -298,3 +297,4 @@ if __name__ == '__main__':
     #     induction = BayesN(['腹胀','腹泻-黄色稀粪','咳嗽'],['突然死亡','鼻甲变形'],20,4,15,'WX310603162020200801')
     disease = induction.predict()
     sample = induction.sampling()
+    sys.exit({'induction': disease, 'sample': sample})
