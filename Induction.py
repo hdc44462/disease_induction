@@ -16,11 +16,16 @@ month = int(sys.argv[4])
 batchno = sys.argv[5]
 deathrate = int(sys.argv[6])
 
-histDB = {'host': '10.106.5.205', 'port': 3306, 'user': 'uszchenye', 'password': 'cy629!', 'database': 'MY_ANA_test'}
+# main_symptom = ['腹胀','腹泻-黄色稀粪','咳嗽']
+# minor_symptom = ['突然死亡','鼻甲变形']
+# age = 20
+# month = 4
 # batchno = '15380174'
+# deathrate = 15
 
+histDB = {'host': '10.106.5.205', 'port': 3306, 'user': 'uszchenye', 'password': 'cy629!', 'database': 'MY_ANA_test'}
 
-# connect to MYSQL
+# 连接MYSQL数据库提取历史发病、及病原的环境检出情况
 def sql_extract(dic, sql):
     connect_info = 'mysql+pymysql://' + str(dic['user']) + ':' + str(dic['password']) + '@' + str(
         dic['host']) + ':' + str(dic['port']) + '/' + str(dic['database']) + '?charset=utf8'
@@ -28,7 +33,7 @@ def sql_extract(dic, sql):
     return pd.read_sql(sql=sql, con=engine)
 
 
-# export dict from json
+# json文件读取
 def read_json(filename):
     with open(filename, 'r') as file:
         load_dict = json.load(file)
@@ -36,17 +41,17 @@ def read_json(filename):
 
 
 class BayesN:
-    disease_CNtoENname = read_json('disease_CNtoENname.json')
-    cause_disease = read_json('cause_disease.json')
-    disease_symptom = read_json('disease_symptom.json')
-    base_symptom = read_json('base_symptom.json')
-    base_disease = read_json('base_disease.json')
-    symptom_classification = read_json('symptom_classification.json')
-    disease_type = read_json('disease_type.json')
-    sample = read_json('sample.json')
-    disease_season = read_json('disease_season.json')
-    disease_age = read_json('disease_age.json')
-    disease_death = read_json('disease_death.json')
+    disease_CNtoENname = read_json('disease_CNtoENname.json')           # 疾病的全名和缩写
+    cause_disease = read_json('cause_disease.json')                     # 每项疾病历史病原、环境检出等风险情况
+    disease_symptom = read_json('disease_symptom.json')                 # 每项疾病导致的症状情况和概率
+    base_symptom = read_json('base_symptom.json')                       # 在非疾病因素下，观察到各症状的概率
+    base_disease = read_json('base_disease.json')                       # 在无历史检出、环境检出等风险条件下，各疾病的发生概率
+    symptom_classification = read_json('symptom_classification.json')   # 各症状所属类型（呼吸道类、消化道类等）
+    disease_type = read_json('disease_type.json')                       # 各项疾病所属类型
+    sample = read_json('sample.json')                                   # 各项疾病对应的送检推荐
+    disease_season = read_json('disease_season.json')                   # 各项疾病的风险季节
+    disease_age = read_json('disease_age.json')                         # 各项疾病的风险日龄
+    disease_death = read_json('disease_death.json')                     # 各项疾病造成的死亡率区间
 
     @staticmethod
     def reverse(dictionary):
@@ -59,8 +64,7 @@ class BayesN:
                     reverse_dictionary[j][i] = dictionary[i][j]
         return reverse_dictionary
 
-    # create cpd table    P(symptom|[disease]) = max(P(symptom|disease))
-
+    # 输入疾病概率，生成概率图。用于评估疾病发生的先验概率。 当前采用p = p0*exp(sum(风险点))
     @staticmethod
     def create_cpd_risk(disease_table, base):
         print('function create_cpd_risk start!')
@@ -75,6 +79,7 @@ class BayesN:
         print('function create_cpd_risk take %d seconds' % (time.time() - start_time))
         return res
 
+    # 输入疾病概率，生成概率图。用于生成多疾病共同作用下，症状发生的概率。当前采用p = max(p1,p2...pn) pi代表第i种病产生该症状的概率
     @staticmethod
     def create_cpd_upplim(disease_table, base):
         print('function create_cpd_upplim start!')
@@ -92,6 +97,7 @@ class BayesN:
         print('function create_cpd_upplim take %d seconds' % (time.time() - start_time))
         return res
 
+    # 根据死亡率，产生风险情况
     def risk_deathrate(self, rate):
         risk = []
         disease_name = []
@@ -104,6 +110,7 @@ class BayesN:
         result = pd.DataFrame([risk], columns=disease_name)
         return result
 
+    # 根据日龄，产生风险情况
     def risk_age(self, age):
         risk = []
         disease_name = []
@@ -116,6 +123,7 @@ class BayesN:
         result = pd.DataFrame([risk], columns=disease_name)
         return result
 
+    # 根据季节，产生风险情况
     def risk_season(self, month):
         risk = []
         disease_name = []
@@ -128,13 +136,14 @@ class BayesN:
         result = pd.DataFrame([risk], columns=disease_name)
         return result
 
-    # create cpd table    P(disease|[causes]) = exp(sum(-log_risks of each cause))
-
     def __init__(self, main_symptom, minor_symptom, age, month, deathrate, batchno):
         # main_symptom:主要症状
         # side_symptom:次要症状
-        # type_list:基于病理将疾病分类：呼吸道、消化道等
-        # sub_cause,sub_symptom：用主要症状对应疾病分类,筛选疾病
+        # type_list:基于病理将疾病分类:呼吸道、消化道等
+        # sub_cause,sub_symptom:用主要症状对应疾病分类,筛选疾病
+        # sample_disease:不同疾病对应的送检推荐
+        # obs:将用户输入的日龄、症状、批次等信息转化为网络的输入信息
+        # 腹泻类疾病较为特殊需要做提前处理
 
         self.main_symptom = main_symptom
         self.minor_symptom = minor_symptom
@@ -172,7 +181,7 @@ class BayesN:
             envir = pd.DataFrame([[1] * envir.shape[1]], columns=envir.columns)
         self.obs = pd.concat([season_risk, deathrate_risk, age_risk, swine, envir], axis=1).fillna(1)
 
-    # 基于疾病与症状分类，获得疑似疾病
+    # 基于疾病与症状分类,通过主要症状,锁定疾病的类型,如消化道类疾病、呼吸道类疾病等
     def classif(self):
         type_list = []
         for i in self.main_symptom:
@@ -221,10 +230,10 @@ class BayesN:
                 [1]
             ]))
         print('function create_bayes take %d seconds' % (time.time() - start_time))
-        self.model = model
+        # self.model = model
         return model
 
-    # 使用观察到的症状和搭建好的贝叶斯网络 获得推理结果
+    # 单次推理模块
     def test_predict(self, sub_cause, sub_symptom, model):
         print('function test_predict start!')
         start_time = time.time()
@@ -259,7 +268,8 @@ class BayesN:
         print('function test_predict take %d seconds' % (time.time() - start_time))
         return result.transpose()
 
-    # 整体推理function
+    # 推理的过程为:通过主要症状,将疾病分成不同类型，然后使用全部的症状分别进行推理。
+    # 取疾病所有推理情况里概率最高的当作疾病的发生概率，将概率最高的前五种疾病输出
     def predict(self):
         print('function test_predict start!')
         temp = []
@@ -275,7 +285,7 @@ class BayesN:
             self.sample_disease[disease_name] = result[i]
         return {key: str(round(value * 100, 2)) + '%' for key, value in result.items()}
 
-    # 症状推荐
+    # 基于推理的疾病，推荐采样送检
     def sampling(self, disease=[]):
         if not disease:
             disease = self.sample_disease
@@ -294,7 +304,6 @@ class BayesN:
 
 if __name__ == '__main__':
     induction = BayesN(main_symptom, minor_symptom, age, month, deathrate, batchno)
-    #     induction = BayesN(['腹胀','腹泻-黄色稀粪','咳嗽'],['突然死亡','鼻甲变形'],20,4,15,'WX310603162020200801')
     disease = induction.predict()
     sample = induction.sampling()
     sys.exit({'induction': disease, 'sample': sample})
